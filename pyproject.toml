@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "activlayer"
+version = "0.1.0"
+description = "The open framework for building and operating governed AI workers."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "ActivLayer Contributors" }]
+keywords = ["agents", "ai", "workers", "workflow", "governance", "human-in-the-loop"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "ruff>=0.7"]
+
+[project.urls]
+Homepage = "https://www.activlayer.com/"
+Documentation = "https://www.activlayer.com/documentation/"
+Articles = "https://www.activlayer.com/articles/"
+Issues = "https://github.com/activlayer/activlayer/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+

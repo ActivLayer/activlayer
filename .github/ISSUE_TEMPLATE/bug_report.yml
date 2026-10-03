@@ -1,0 +1,33 @@
+name: Bug report
+description: Report a reproducible Community Edition defect
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please remove secrets, personal data, and confidential information before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: ActivLayer version
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include the expected behavior and the actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Provide the smallest safe example that reproduces the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Python version, operating system, and relevant dependencies.
+
