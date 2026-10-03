@@ -1,22 +1,32 @@
 # Extensions
 
-An extension is a small object with `name`, `version`, and an `install(runtime)` method. Installation
-registers reusable workers and can perform application-specific setup.
+Extensions add custom node types or named functions while retaining Community Edition persistence,
+permissions, approvals, retries, and events.
 
 ```python
-from activlayer import Runtime, install
+from activlayer import GraphRuntime
 
-class SupportExtension:
-    name = "support"
-    version = "1"
 
-    def install(self, runtime: Runtime) -> None:
-        runtime.register(support_worker)
+def execute_lookup(node, state):
+    key = node["data"]["config"]["key"]
+    return {"value": state["context"].get(key)}
 
-runtime = Runtime()
-install(runtime, SupportExtension())
+
+def install(runtime: GraphRuntime) -> None:
+    runtime.register_handler("example.lookup", execute_lookup)
 ```
 
-Keep extensions explicit. They should not collect telemetry, access the network, modify global
-configuration, or register hidden capabilities without clearly documenting that behavior.
+Place the module in the environment's Python path, then enable it explicitly:
+
+```bash
+activlayer extension add my_package.activlayer_extension
+activlayer extension list
+```
+
+A module can export `install(runtime)` or an `extension` object with `name`, `version`, and
+`install(runtime)`. Function-call nodes resolve handlers registered as `function:<name>`.
+
+Extensions execute inside the server process and have the same authority as the host application.
+Install only reviewed code, declare required permissions, avoid hidden network activity, and never
+collect telemetry without explicit operator consent.
 

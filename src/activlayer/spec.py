@@ -106,4 +106,3 @@ class Run:
     state: dict[str, Any]
     permissions: frozenset[str]
     error: str | None = None
-

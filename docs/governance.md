@@ -13,12 +13,13 @@ the tool.
 
 ## Approval gates
 
-Use `approval=ApprovalPolicy.REQUIRED` for actions that create external side effects, carry financial
-or legal significance, publish information, modify access, or require human judgment under policy.
+Use a `control.approval` node or set `data.config.approval_required` on actions that create external
+side effects, carry legal significance, publish information, modify access, or require human
+judgment under policy.
 
-An approval is specific to a run and step. It records an actor and a reason. Applications embedding
-the runtime remain responsible for authenticating the actor and deciding who is authorized to
-approve.
+An approval is specific to a run and node. It records an actor and a reason. The HTTP API
+authenticates one of the environment's active users. An embedding application remains responsible
+for mapping organizational roles to the permission strings granted to a run.
 
 ## Production guidance
 
@@ -27,4 +28,3 @@ approve.
 - Never pass secrets through worker state or event payloads.
 - Treat approval UI and identity verification as part of the security boundary.
 - Export events to your observability system and alert on repeated denials or failures.
-

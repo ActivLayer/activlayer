@@ -1,14 +1,13 @@
 # Runtime and reliability
 
-The reference runtime stores runs, approvals, and events in SQLite. A step output and the updated
-cursor are committed before the next step starts. A stopped process can re-register the same worker
-version and resume the run by identifier.
+The graph runtime validates a definition, computes deterministic topological order, stores a complete
+run record, and advances one node at a time. It commits output and the cursor before moving forward.
 
-## Retry behavior
+## Durable state
 
-Step failures are retried up to `max_attempts` with a small exponential delay. After the final
-attempt, the run becomes `failed` and stores a safe error message. Tool implementations should be
-idempotent because a process can fail after an external side effect but before local state commits.
+SQLite stores run identity, definition version, exact definition snapshot, input, accumulated
+context, node outputs, attempts, trace, permissions, status, and cursor. Re-registering code is not
+required to resume a graph run because the definition is stored with it.
 
 ## Status lifecycle
 
@@ -17,15 +16,26 @@ pending → running → waiting_approval → running → succeeded
                 └───────────────────────────────→ failed
 ```
 
+## Retry behavior
+
+Node failures retry with a bounded exponential delay up to `max_attempts`. After the final attempt,
+the run becomes `failed`. HTTP tools should use application-level idempotency keys because any local
+runtime can stop after an external side effect but before recording its result.
+
+## Fail-closed execution
+
+Missing permissions stop execution. Unknown node types and uninstalled functions fail rather than
+being silently skipped. Conditions use a limited expression language and never evaluate Python.
+
 ## Event integrity
 
-Each event contains the preceding event's SHA-256 digest. `runtime.store.verify_events(run_id)`
-recomputes the chain. This detects editing; it is not a substitute for access controls, backups, or
-an external append-only archive.
+Every run event includes the preceding event's SHA-256 digest. `verify_events(run_id)` recomputes the
+chain. This detects editing but does not replace access controls, backups, or an external append-only
+archive.
 
-## Scope of the reference runtime
+## Current execution boundary
 
-SQLite is ideal for local development, embedded deployments, and learning. Multi-process leasing,
-distributed queues, remote databases, and production scheduling are roadmap items. Extensions can
-wrap the public specification while retaining the same worker semantics.
+Community Edition 0.2 is a single-host, single-process reference runtime. Distributed leasing,
+parallel branches, external queues, cancellation, schedules, and pluggable database stores remain on
+the roadmap.
 

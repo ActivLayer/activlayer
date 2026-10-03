@@ -53,4 +53,3 @@ def test_completed_run_is_idempotent(tmp_path: Path) -> None:
     completed = runtime.approve(run.id, actor="reviewer")
     same = runtime.execute(run.id)
     assert same == completed
-

@@ -1,0 +1,14 @@
+services:
+  activlayer:
+    build: .
+    ports:
+      - "8787:8787"
+    environment:
+      ACTIVLAYER_HOME: /data
+    volumes:
+      - activlayer-data:/data
+    restart: unless-stopped
+
+volumes:
+  activlayer-data:
+

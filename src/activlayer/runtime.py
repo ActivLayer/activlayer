@@ -90,9 +90,8 @@ class Runtime:
                 )
                 raise PermissionDenied(message)
 
-            if (
-                step.tool.approval == ApprovalPolicy.REQUIRED
-                and not self.store.is_approved(run.id, step.name)
+            if step.tool.approval == ApprovalPolicy.REQUIRED and not self.store.is_approved(
+                run.id, step.name
             ):
                 run = replace(run, status=RunStatus.WAITING_APPROVAL)
                 self.store.save_run(run)
@@ -160,4 +159,3 @@ class Runtime:
             {"step": step.name, "actor": actor, "reason": reason},
         )
         return self.execute(run.id)
-

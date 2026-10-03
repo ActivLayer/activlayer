@@ -104,6 +104,18 @@ class SQLiteStore:
             error=row["error"],
         )
 
+    def list_runs(self, *, limit: int = 50, worker: str | None = None) -> list[Run]:
+        query = "SELECT id FROM runs"
+        values: tuple[Any, ...] = ()
+        if worker:
+            query += " WHERE worker = ?"
+            values = (worker,)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        values = (*values, limit)
+        with self.connect() as connection:
+            rows = connection.execute(query, values).fetchall()
+        return [self.get_run(row["id"]) for row in rows]
+
     def save_run(self, run: Run) -> None:
         with self.connect() as connection:
             connection.execute(
@@ -182,4 +194,3 @@ class SQLiteStore:
                 return False
             previous_hash = event["hash"]
         return True
-

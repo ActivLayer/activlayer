@@ -4,34 +4,56 @@
 
 - Python 3.11 or newer
 - Git
+- An optional OpenAI-compatible model server for AI nodes
 
-## Install from source
+## Install
 
 ```bash
-git clone https://github.com/activlayer/activlayer.git
+git clone https://github.com/ActivLayer/activlayer.git
 cd activlayer
+git switch community-edition
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1`.
-
-## Run the example
+## Initialize
 
 ```bash
-python examples/approval_worker.py
+activlayer init \
+  --organization "Example Organization" \
+  --owner owner@example.com
 ```
 
-The example creates a local `example.db`, executes its first step, pauses before a protected write,
-records a human approval, and completes. Delete the database whenever you want a fresh local run.
-
-## Run the tests
+## Configure a model
 
 ```bash
-pytest
+activlayer llm add local --type ollama --model qwen3:8b
+activlayer llm test local
 ```
 
-Continue with [Core concepts](concepts.md) or open
-[`examples/approval_worker.py`](../examples/approval_worker.py) to modify the worker.
+AI nodes require a model provider. Trigger, rule, approval, HTTP, decision, and output nodes run
+without one.
+
+## Provision and run
+
+```bash
+activlayer agent provision examples/request_review.json --publish
+activlayer agent graph request-review --published
+
+activlayer run start request-review \
+  --input '{"request":"Review the weekly report"}' \
+  --permission requests.approve \
+  --actor owner@example.com
+```
+
+The run processes the trigger and AI node, then pauses durably at the approval node.
+
+```bash
+activlayer run list
+activlayer run show <run-id> --events
+activlayer run approve <run-id> --actor owner@example.com --reason "Checked"
+```
+
+Continue with the [CLI guide](cli.md) and [Agent JSON reference](agent-json.md).
 

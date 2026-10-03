@@ -42,4 +42,3 @@ if __name__ == "__main__":
     run = runtime.approve(run.id, actor="reviewer@example.com", reason="Reply checked")
     print(f"Run {run.id}: {run.status}")
     print(run.state["outputs"]["publish"])
-

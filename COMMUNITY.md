@@ -12,7 +12,8 @@ the framework without depending on an ActivLayer cloud account.
 Community Edition has:
 
 - no mandatory telemetry;
-- no product-enforced limit on workers, runs, users, or models;
+- one organization with up to three users;
+- no product-enforced limit on workers, runs, or models;
 - no proprietary network dependency in the execution path; and
 - public interfaces that are developed in the open.
 
@@ -31,4 +32,3 @@ Features may mature at different rates, but the open edition will remain indepen
 
 Community support is provided through GitHub Issues and Discussions on a best-effort basis. Please
 use the issue templates and include a minimal reproduction when reporting a defect.
-

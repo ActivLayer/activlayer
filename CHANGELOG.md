@@ -2,6 +2,18 @@
 
 All notable changes to ActivLayer Community Edition are documented here.
 
+## 0.2.0 — 2026-10-03
+
+- Single-organization environment with an enforced three-user ceiling
+- Rich CLI for configuration, users, providers, connectors, agents, nodes, and runs
+- Studio-compatible Agent Worker JSON import, export, editing, validation, and publication
+- Operational graph runtime with durable definition snapshots and node cursors
+- OpenAI-compatible inference for Ollama, vLLM, llama.cpp, and custom endpoints
+- Permission enforcement, approval checkpoints, retries, conditional nodes, and event chains
+- Authenticated FastAPI service with per-user access-token rotation
+- Built-in node catalog, example Agent Worker, Docker image, and Compose definition
+- Expanded end-to-end test coverage
+
 ## 0.1.0 — 2026-10-03
 
 - Initial public Agent Worker specification
@@ -11,4 +23,3 @@ All notable changes to ActivLayer Community Edition are documented here.
 - Bounded retries and resumable runs
 - Hash-chained execution event history
 - Extension contract, example, tests, and documentation
-

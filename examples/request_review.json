@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "id": "request-review",
+  "name": "Request Review",
+  "description": "Analyze an operational request and pause before approval.",
+  "domain": "general",
+  "version": "1",
+  "status": "draft",
+  "trigger": "api",
+  "system_prompt": "You review operational requests carefully. Return a concise JSON object.",
+  "policy": {},
+  "graph": {
+    "nodes": [
+      {
+        "id": "start",
+        "type": "trigger.api",
+        "data": {
+          "label": "Request received",
+          "subtitle": "CLI or API",
+          "config": {}
+        }
+      },
+      {
+        "id": "analyze",
+        "type": "ai.prompt",
+        "data": {
+          "label": "Analyze request",
+          "subtitle": "Structured assessment",
+          "config": {
+            "prompt": "Analyze this operational request and return JSON: {request}",
+            "temperature": 0,
+            "max_tokens": 800
+          }
+        }
+      },
+      {
+        "id": "approval",
+        "type": "control.approval",
+        "data": {
+          "label": "Human checkpoint",
+          "subtitle": "Review before completion",
+          "config": {
+            "permission": "requests.approve",
+            "approval_reason": "Review the model recommendation"
+          }
+        }
+      },
+      {
+        "id": "result",
+        "type": "output.result",
+        "data": {
+          "label": "Result",
+          "subtitle": "Final worker output",
+          "config": {}
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "start-analyze",
+        "source": "start",
+        "target": "analyze"
+      },
+      {
+        "id": "analyze-approval",
+        "source": "analyze",
+        "target": "approval"
+      },
+      {
+        "id": "approval-result",
+        "source": "approval",
+        "target": "result"
+      }
+    ]
+  }
+}
+

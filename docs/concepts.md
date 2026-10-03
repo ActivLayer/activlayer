@@ -1,37 +1,44 @@
 # Core concepts
 
-## Worker
+## Environment
 
-A `Worker` is a named, versioned sequence of durable steps. It describes the work to perform without
-coupling the definition to a hosting service or model provider.
+An environment belongs to one organization. It holds up to three users, model and connector
+configuration, private secrets, agent definitions, and runtime state.
 
-## Tool
+## Agent Worker
 
-A `Tool` wraps a normal Python callable and declares the permission required to use it and whether a
-human approval is required. Keep tools narrow, deterministic where practical, and safe to retry.
+An Agent Worker is a versioned JSON definition containing metadata, policy, and a directed acyclic
+graph. Drafts are editable. Published definitions are execution snapshots.
 
-## Step
+## Node
 
-A `Step` binds a tool to arguments derived from the run state. Its output is stored before execution
-advances. Steps have bounded retry behavior.
+A node is one durable operation. Its dotted type selects an executor, such as `ai.prompt`,
+`rule.completeness`, `control.approval`, `tool.http`, or `output.result`. Configuration lives under
+`data.config`, matching Studio output.
 
 ## Run
 
-A `Run` is one durable execution of a worker. The runtime stores input, outputs, the current step,
-permissions, attempts, status, and any terminal error.
+A run is one durable execution of a published definition. It retains the exact definition, input,
+context, outputs, attempts, trace, permissions, actor, and node cursor.
 
 ## Permission
 
-A permission is an application-defined string such as `orders.read` or `orders.write`. The runtime
-checks it immediately before calling a tool. Start workers with the smallest required set.
+A permission is an application-defined string attached to a node, such as `records.read` or
+`records.write`. The runtime checks the run's granted permissions immediately before execution.
 
 ## Approval
 
-An approval is an explicit decision attached to a run and step. Protected tools cannot execute until
-the runtime has a recorded approval. The actor and reason are preserved in the event history.
+An approval is a human decision attached to a run and node. An explicit `control.approval` node—or
+any node with `approval_required`—pauses before executing. The actor and reason enter the event log.
+
+## Provider and connector
+
+A provider is an OpenAI-compatible model endpoint. A connector is a governed HTTP endpoint used by
+tools and integration nodes. Keys are referenced by environment variable or stored in the private
+local secret file.
 
 ## Event
 
-Events describe run creation, step execution, permission decisions, approval decisions, and terminal
-state. Each event includes the hash of the preceding event, making later alteration detectable.
+Every run transition appends an event containing the preceding event's hash. Recomputing the chain
+detects later alteration.
 

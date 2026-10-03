@@ -9,173 +9,311 @@
 [![Community Edition](https://img.shields.io/badge/edition-community-8B5CF6?style=flat-square)](COMMUNITY.md)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-22C55E?style=flat-square)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white)](tests)
+[![CI](https://img.shields.io/github/actions/workflow/status/ActivLayer/activlayer/ci.yml?branch=community-edition&style=flat-square&label=CI)](https://github.com/ActivLayer/activlayer/actions)
 
 **The open framework for building and operating governed AI workers.**
 
-[Website](https://www.activlayer.com/) · [Documentation](https://www.activlayer.com/documentation/) · [Articles](https://www.activlayer.com/articles/) · [Examples](examples) · [Community](COMMUNITY.md)
+[Website](https://www.activlayer.com/) · [Documentation](https://www.activlayer.com/documentation/) · [Articles](https://www.activlayer.com/articles/) · [CLI guide](docs/cli.md) · [Community](COMMUNITY.md)
 
 </div>
 
 ---
 
-ActivLayer turns agents into dependable workers that can execute real business processes. Define a
-worker in code, give it tools with explicit permissions, place human approval gates around sensitive
-actions, and retain a durable, verifiable record of every run.
+ActivLayer Community Edition is an operational, self-hosted environment for one organization and up
+to three users. Define Agent Workers as portable Studio-compatible JSON graphs, edit them from a
+rich terminal interface, connect local or remote models, publish versioned definitions, and execute
+them with durable state, permissions, approval checkpoints, retries, and tamper-evident events.
 
-The Community Edition is self-hosted, model-agnostic, and industry-neutral. It has no mandatory
-cloud account, telemetry, or artificial limits on workers and runs.
+It has no required cloud account, mandatory telemetry, or proprietary service in the execution path.
 
-## Why ActivLayer?
+## What is included
 
-Most agent frameworks help a model call a function. ActivLayer focuses on what comes next: operating
-that behavior safely and predictably inside a real organization.
-
-| Build | Govern | Operate | Extend |
+| Environment | Agent design | Execution | Integration |
 |---|---|---|---|
-| Code-first workers and tools | Explicit permissions | Durable run state | Model-agnostic by design |
-| Versioned worker definitions | Human approval gates | Retries and resumability | Plain Python tools |
-| Typed public specification | Auditable actions | Local, self-hosted storage | Reusable extensions |
+| One organization | Studio-compatible JSON | Durable SQLite state | Ollama |
+| Up to three users | CLI graph navigation | Permission enforcement | vLLM |
+| Token-authenticated API | Node and property editing | Human approval gates | llama.cpp server |
+| Local secret store | Draft and publish lifecycle | Retries and resume | Any OpenAI-compatible API |
+| Environment doctor | Import and export | Hash-chained events | Governed HTTP connectors |
 
-## An Agent Worker in 60 seconds
-
-```python
-from activlayer import ApprovalPolicy, Runtime, Step, Worker, tool
-
-@tool(permission="support.read")
-def draft_reply(ticket: str) -> str:
-    return f"Thanks for contacting us about: {ticket}"
-
-@tool(permission="support.write", approval=ApprovalPolicy.REQUIRED)
-def publish_reply(message: str) -> dict:
-    return {"status": "published", "message": message}
-
-worker = Worker(
-    name="support-reply",
-    steps=(
-        Step("draft", draft_reply,
-             lambda state: {"ticket": state["input"]["ticket"]}),
-        Step("publish", publish_reply,
-             lambda state: {"message": state["outputs"]["draft"]}),
-    ),
-)
-
-runtime = Runtime("activlayer.db")
-run = runtime.start(
-    worker,
-    {"ticket": "I need to change my delivery address"},
-    permissions={"support.read", "support.write"},
-)
-
-# The run is durable and paused before the write action.
-assert run.status == "waiting_approval"
-
-run = runtime.approve(run.id, actor="reviewer@example.com", reason="Reply checked")
-assert run.status == "succeeded"
-```
-
-Tools are ordinary Python functions. Governance is part of their definition rather than an
-afterthought. When execution stops for approval—or because a process restarts—the run remains in
-SQLite and can continue from the exact durable step.
-
-## Quick start
+## Install
 
 ```bash
-git clone https://github.com/activlayer/activlayer.git
+git clone https://github.com/ActivLayer/activlayer.git
 cd activlayer
+git switch community-edition
+
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-pytest
-python examples/approval_worker.py
+
+activlayer --help
 ```
 
-Python 3.11 or newer is required. The core has no runtime dependencies outside the standard
-library.
+Python 3.11 or newer is required.
 
-## How it works
+## Create the environment
+
+```bash
+activlayer init \
+  --organization "Example Organization" \
+  --owner owner@example.com
+
+activlayer status
+activlayer doctor
+```
+
+This creates `.activlayer/` with organization configuration, private user and secret files, agent
+drafts, published definitions, logs, and the durable runtime database. Set `ACTIVLAYER_HOME` or use
+the global `--home` option to manage an environment elsewhere.
+
+Community Edition enforces a maximum of three organization users:
+
+```bash
+activlayer user add builder@example.com --name "Agent Builder" --role admin
+activlayer user add reviewer@example.com --name "Reviewer" --role member
+activlayer user list
+```
+
+## Connect your model server
+
+All model integrations use the OpenAI-compatible `/v1/chat/completions` and `/v1/models` contract.
+
+```bash
+# Ollama
+activlayer llm add local \
+  --type ollama \
+  --model qwen3:8b
+
+# vLLM
+activlayer llm add gpu-server \
+  --type vllm \
+  --base-url http://localhost:8000/v1 \
+  --model Qwen/Qwen3-8B
+
+# llama.cpp server
+activlayer llm add edge \
+  --type llama-cpp \
+  --base-url http://localhost:8080/v1 \
+  --model local-model
+
+# Any hosted or self-hosted OpenAI-compatible endpoint
+activlayer llm add custom \
+  --type openai-compatible \
+  --base-url https://models.example.com/v1 \
+  --model organization-model \
+  --api-key-env MODEL_API_KEY
+
+activlayer llm list
+activlayer llm use local
+activlayer llm test local --prompt "Reply with one short sentence."
+```
+
+Keys supplied with `--api-key` are stored in a mode-`600` local secrets file and excluded from
+configuration output. `--api-key-env` is preferred for production deployments.
+
+See [LLM providers](docs/llm-providers.md).
+
+## Provision an Agent Worker
+
+Agent definitions use the JSON graph already produced by ActivLayer Studio:
+
+```json
+{
+  "schema_version": "1.0",
+  "id": "request-review",
+  "name": "Request Review",
+  "version": "1",
+  "status": "draft",
+  "system_prompt": "Review operational requests carefully and return JSON.",
+  "policy": {},
+  "graph": {
+    "nodes": [
+      {
+        "id": "start",
+        "type": "trigger.api",
+        "data": {"label": "Request received", "config": {}}
+      },
+      {
+        "id": "analyze",
+        "type": "ai.prompt",
+        "data": {
+          "label": "Analyze request",
+          "config": {"prompt": "Analyze this request and return JSON: {request}"}
+        }
+      },
+      {
+        "id": "approval",
+        "type": "control.approval",
+        "data": {
+          "label": "Human checkpoint",
+          "config": {
+            "permission": "requests.approve",
+            "approval_reason": "Review the model recommendation"
+          }
+        }
+      },
+      {
+        "id": "result",
+        "type": "output.result",
+        "data": {"label": "Result", "config": {}}
+      }
+    ],
+    "edges": [
+      {"id": "start-analyze", "source": "start", "target": "analyze"},
+      {"id": "analyze-approval", "source": "analyze", "target": "approval"},
+      {"id": "approval-result", "source": "approval", "target": "result"}
+    ]
+  }
+}
+```
+
+Install, validate, and publish it:
+
+```bash
+activlayer agent provision examples/request_review.json --publish
+activlayer agent list
+activlayer agent graph request-review --published
+```
+
+Published definitions are versioned execution snapshots. Drafts remain editable.
+
+## Design agents from the CLI
+
+The CLI can create an agent and navigate or modify every agent and node property:
+
+```bash
+activlayer agent new "Request Review" --id request-review
+
+activlayer agent node types
+activlayer agent node explain ai.prompt
+activlayer agent node list request-review
+activlayer agent node show request-review trigger
+
+activlayer agent node add request-review analyze \
+  --type ai.prompt \
+  --label "Analyze request" \
+  --config '{"prompt":"Analyze and return JSON: {request}"}'
+
+activlayer agent node set request-review analyze data.config.temperature 0.1
+activlayer agent node set request-review analyze data.config.provider '"local"'
+activlayer agent set request-review system_prompt "Be precise and return JSON."
+
+activlayer agent node connect request-review trigger analyze
+activlayer agent node connect request-review analyze output
+activlayer agent graph request-review
+activlayer agent validate request-review
+activlayer agent publish request-review
+activlayer agent export request-review --published --output request-review.json
+```
+
+Values are parsed as JSON when possible, so numbers, booleans, arrays, objects, and quoted strings
+retain their types. Read the complete [CLI guide](docs/cli.md) and
+[Agent JSON reference](docs/agent-json.md).
+
+## Execute, approve, and inspect
+
+```bash
+activlayer run start request-review \
+  --input '{"request":"Prepare the weekly operations report"}' \
+  --permission requests.approve \
+  --actor owner@example.com
+
+activlayer run list
+activlayer run show <run-id> --events
+activlayer run approve <run-id> \
+  --actor reviewer@example.com \
+  --reason "Recommendation checked"
+```
+
+A run stores its definition snapshot, input, context, node outputs, attempts, trace, permissions, and
+cursor. A stopped process can resume from the durable cursor with `activlayer run resume <run-id>`.
+
+## Serve the API
+
+Create a user token and start the local service:
+
+```bash
+activlayer user token owner@example.com
+activlayer serve --host 127.0.0.1 --port 8787
+```
+
+```bash
+curl http://127.0.0.1:8787/v1/agents \
+  -H "X-ActivLayer-Key: $ACTIVLAYER_API_KEY"
+
+curl -X POST http://127.0.0.1:8787/v1/runs \
+  -H "X-ActivLayer-Key: $ACTIVLAYER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "request-review",
+    "input": {"request": "Prepare the weekly operations report"},
+    "permissions": ["requests.approve"]
+  }'
+```
+
+Interactive OpenAPI documentation is available at `http://127.0.0.1:8787/docs`. See the
+[API guide](docs/api.md).
+
+## Runtime model
 
 ```text
-Input
-  │
-  ▼
-Agent Worker ──► durable step ──► permission check ──► approval gate
-  ▲                                                        │
-  │                                                        ▼
-  └──────── durable state ◄── tool result ◄── governed tool call
-
-Every transition ──► hash-chained event log
+API / CLI input
+      │
+      ▼
+published Agent JSON ──► validated DAG ──► durable node cursor
+                                                │
+                ┌───────────────────────────────┼──────────────────────┐
+                ▼                               ▼                      ▼
+        permission check                 approval gate          node executor
+                │                               │                      │
+                └───────────────────────────────┴──────────► output + context
+                                                                       │
+                                              SQLite state + hash-chained events
 ```
 
-An **Agent Worker** is a long-running, governed software worker that uses AI models and tools to
-execute business tasks reliably within explicit permissions, approval policies, and operational
-controls. ActivLayer does not prescribe which model, prompt framework, or infrastructure you use.
-
-## Community Edition
-
-The open-source edition includes:
-
-- A code-first Python SDK and public Agent Worker specification
-- A durable, self-hosted runtime backed by SQLite
-- Governed tools, permissions, and human approval checkpoints
-- Retry handling, resumable runs, and hash-chained execution events
-- An extension contract for reusable workers and tools
-- Runnable examples, tests, documentation, and GitHub community support
-
-See [Community Edition](COMMUNITY.md) for the product boundary and design commitments.
+Built-in execution families include triggers, OpenAI-compatible AI nodes, safe rules, explicit
+approval controls, governed HTTP tools and Studio integrations, decisions, assignments, and output
+composition. Unsupported specialized nodes fail closed and can be supplied by extensions.
 
 ## Documentation
 
-| Guide | What you will learn |
+| Guide | Contents |
 |---|---|
-| [Quick start](docs/quickstart.md) | Install the SDK and run your first worker |
-| [Core concepts](docs/concepts.md) | Workers, steps, tools, runs, permissions, and approvals |
-| [Worker specification](docs/worker-specification.md) | The stable public contract and validation rules |
-| [Permissions and approvals](docs/governance.md) | Put enforceable controls around tool use |
-| [Runtime and reliability](docs/runtime.md) | Persistence, retries, resumability, and event integrity |
-| [Extensions](docs/extensions.md) | Package and share reusable capabilities |
-| [Architecture](docs/architecture.md) | Understand the Community runtime components |
-| [Roadmap](ROADMAP.md) | See what is planned and help shape priorities |
+| [Quick start](docs/quickstart.md) | Install and complete a first operational run |
+| [CLI](docs/cli.md) | Environment, users, LLMs, connectors, agents, nodes, and runs |
+| [Agent JSON](docs/agent-json.md) | Studio-compatible graph schema and editing model |
+| [LLM providers](docs/llm-providers.md) | Ollama, vLLM, llama.cpp, and custom endpoints |
+| [HTTP API](docs/api.md) | Authentication and runtime endpoints |
+| [Core concepts](docs/concepts.md) | Workers, definitions, nodes, permissions, approvals, and runs |
+| [Permissions and approvals](docs/governance.md) | Operational control boundaries |
+| [Runtime and reliability](docs/runtime.md) | Persistence, retries, resume, and event integrity |
+| [Architecture](docs/architecture.md) | Community Edition components and data flow |
+| [Extensions](docs/extensions.md) | Install custom node and function handlers |
+| [Roadmap](ROADMAP.md) | Planned execution and packaging work |
 
-For broader product and implementation guidance, visit the
-[ActivLayer documentation](https://www.activlayer.com/documentation/).
+For broader product guidance, visit the
+[ActivLayer documentation](https://www.activlayer.com/documentation/) and
+[articles](https://www.activlayer.com/articles/).
 
-## Learn from the field
+## Development
 
-The [ActivLayer articles](https://www.activlayer.com/articles/) explore the operating patterns behind
-governed AI work:
+```bash
+pip install -e ".[dev]"
+ruff check .
+pytest
+```
 
-- [Defining human checkpoints](https://www.activlayer.com/documentation/define-a-checkpoint/) — pause
-  a workflow for review under policy.
-- [Maker-checker for machines](https://www.activlayer.com/articles/maker-checker-for-machines/) —
-  apply separation of duties to AI-assisted operations.
-- [Browse all articles](https://www.activlayer.com/articles/) — practical writing on agent
-  operations, control, and reliability.
+The test suite covers the SDK runtime, graph editing and validation, the three-user boundary,
+permissions, approval pause/resume, event integrity, CLI workflows, and authenticated API execution.
 
-## Project status
+## Community, security, and license
 
-Community Edition is an early release. Its public interfaces will evolve as the community tests them
-against real workloads. Pin versions, review the [changelog](CHANGELOG.md), and open a discussion
-before depending on an undocumented behavior.
-
-## Contributing
-
-We welcome bug reports, documentation improvements, examples, integrations, and focused proposals.
-Start with [CONTRIBUTING.md](CONTRIBUTING.md), read our [Code of Conduct](CODE_OF_CONDUCT.md), and use
-GitHub Discussions for design questions.
-
-## Security
-
-Please do not report security vulnerabilities through a public issue. Follow the private process in
-[SECURITY.md](SECURITY.md).
-
-## Community and contact
-
-- Ask usage questions in [GitHub Discussions](https://github.com/activlayer/activlayer/discussions)
-- Report reproducible defects in [GitHub Issues](https://github.com/activlayer/activlayer/issues)
-- For product or partnership inquiries, email [hello@activlayer.com](mailto:hello@activlayer.com)
-
-## License
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+- Use [GitHub Discussions](https://github.com/ActivLayer/activlayer/discussions) for design questions.
+- Use [GitHub Issues](https://github.com/ActivLayer/activlayer/issues) for reproducible defects.
+- Report vulnerabilities privately using [SECURITY.md](SECURITY.md).
+- Contact [hello@activlayer.com](mailto:hello@activlayer.com) for product inquiries.
 
 ActivLayer Community Edition is licensed under the [Apache License 2.0](LICENSE).
 
