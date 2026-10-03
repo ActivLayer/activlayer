@@ -29,8 +29,11 @@ from .agent import (
     validate_agent,
 )
 from .catalog import NODE_CATALOG, node_help
+from .design_assistant import DesignAssistant, DesignAssistantError
 from .graph_runtime import GraphRuntime
+from .knowledge import SharedKnowledge
 from .llm import PROVIDER_DEFAULTS, LLMError, client_from_workspace
+from .memory import AgentMemory
 from .runtime import ActivLayerError
 from .spec import RunStatus
 from .workspace import MAX_USERS, Workspace, WorkspaceError, slugify
@@ -52,6 +55,8 @@ extension_app = typer.Typer(help="Manage explicitly installed runtime extensions
 agent_app = typer.Typer(help="Create, provision, inspect, edit, and publish Agent Workers.")
 node_app = typer.Typer(help="Navigate and edit the nodes of an agent graph.")
 run_app = typer.Typer(help="Start, inspect, approve, and resume durable runs.")
+knowledge_app = typer.Typer(help="Manage the shared organization knowledge base.")
+memory_app = typer.Typer(help="Inspect an individual worker's isolated memory.")
 agent_app.add_typer(node_app, name="node")
 app.add_typer(config_app, name="config")
 app.add_typer(user_app, name="user")
@@ -60,6 +65,8 @@ app.add_typer(connector_app, name="connector")
 app.add_typer(extension_app, name="extension")
 app.add_typer(agent_app, name="agent")
 app.add_typer(run_app, name="run")
+app.add_typer(knowledge_app, name="knowledge")
+app.add_typer(memory_app, name="memory")
 
 
 def _die(message: str, code: int = 1) -> None:
@@ -86,7 +93,8 @@ def _repo(ctx: typer.Context) -> AgentRepository:
 
 
 def _require_executable(workspace: Workspace, agent: dict[str, Any]) -> None:
-    errors = GraphRuntime(workspace).execution_errors(agent)
+    errors = AgentRepository(workspace).relationship_errors(agent, published_required=True)
+    errors.extend(GraphRuntime(workspace).execution_errors(agent))
     if errors:
         raise AgentValidationError(errors)
 
@@ -591,10 +599,13 @@ def agent_new(
     name: str,
     agent_id: Annotated[str | None, typer.Option("--id")] = None,
     description: Annotated[str, typer.Option("--description")] = "",
+    agent_type: Annotated[str, typer.Option("--type", help="worker or orchestrator")] = "worker",
 ) -> None:
     """Create a minimal editable agent graph."""
     try:
-        agent = _repo(ctx).create(name, agent_id=agent_id, description=description)
+        agent = _repo(ctx).create(
+            name, agent_id=agent_id, description=description, agent_type=agent_type
+        )
         console.print(f"[green]Created draft[/green] {agent['id']}")
         console.print("Edit it with: [cyan]activlayer agent node add|set|connect[/cyan]")
     except AgentError as error:
@@ -608,11 +619,12 @@ def agent_list(
 ) -> None:
     """List draft and published agents."""
     agents = _repo(ctx).list(published=published)
-    table = _table("Agent Workers", ["ID", "Name", "Version", "State", "Nodes"])
+    table = _table("Agents", ["ID", "Name", "Type", "Version", "State", "Nodes"])
     for agent in agents:
         table.add_row(
             agent["id"],
             agent["name"],
+            agent.get("agent_type", "worker"),
             str(agent.get("version", "1")),
             agent["_source"],
             str(len(agent["graph"]["nodes"])),
@@ -639,6 +651,7 @@ def agent_show(
     for label, value in (
         ("ID", agent["id"]),
         ("Name", agent["name"]),
+        ("Type", agent.get("agent_type", "worker")),
         ("Version", str(agent.get("version", "1"))),
         ("Status", agent.get("status", "draft")),
         ("Domain", agent.get("domain", "general")),
@@ -676,6 +689,7 @@ def agent_validate(
     except AgentError as error:
         _die(str(error))
     errors = validate_agent(agent)
+    errors.extend(_repo(ctx).relationship_errors(agent, published_required=published))
     errors.extend(GraphRuntime(_workspace(ctx)).execution_errors(agent))
     if errors:
         for error in errors:
@@ -909,6 +923,153 @@ def node_disconnect(ctx: typer.Context, agent_id: str, edge_id: str) -> None:
         console.print(f"[green]Disconnected[/green] {edge_id}")
     except AgentError as error:
         _die(str(error))
+
+
+@agent_app.command("workers")
+def agent_workers(
+    ctx: typer.Context,
+    agent_id: str,
+    workers: Annotated[list[str] | None, typer.Argument(help="Worker IDs to manage.")] = None,
+) -> None:
+    """Show or replace an orchestrator's managed worker list."""
+    repo = _repo(ctx)
+    try:
+        agent = repo.load(agent_id)
+        if agent.get("agent_type", "worker") != "orchestrator":
+            _die(f"{agent_id} is not an orchestrator")
+        if workers is not None:
+            agent["managed_workers"] = list(workers)
+            errors = repo.relationship_errors(agent)
+            if errors:
+                raise AgentValidationError(errors)
+            repo.save(agent)
+            console.print(f"[green]Updated[/green] {agent_id} · {len(workers)} worker(s)")
+        else:
+            for worker in agent.get("managed_workers", []):
+                console.print(worker)
+    except (AgentError, AgentValidationError) as error:
+        _die(str(error))
+
+
+@app.command("chat")
+def design_chat(
+    ctx: typer.Context,
+    message: Annotated[str | None, typer.Argument(help="Plain-language design request.")] = None,
+    provider: Annotated[str | None, typer.Option("--provider")] = None,
+    apply: Annotated[
+        bool, typer.Option("--apply", help="Apply after showing the validated plan.")
+    ] = False,
+) -> None:
+    """Plan safe agent-design changes from plain language and optionally apply them."""
+    if message is None:
+        message = typer.prompt("What would you like to change in the agent design?")
+    assistant = DesignAssistant(_workspace(ctx))
+    try:
+        plan = assistant.plan(message, provider=provider)
+        console.print(Panel(plan.summary, title="Validated design plan", border_style="violet"))
+        table = _table("Proposed operations", ["#", "Operation", "Agent", "Details"])
+        for index, operation in enumerate(plan.operations, start=1):
+            details = {
+                key: value for key, value in operation.items() if key not in {"op", "agent_id"}
+            }
+            table.add_row(
+                str(index),
+                str(operation["op"]),
+                str(operation.get("agent_id") or operation.get("id", "")),
+                json.dumps(details, ensure_ascii=False),
+            )
+        console.print(table)
+        should_apply = apply or Confirm.ask("Apply this validated plan?", default=False)
+        if not should_apply:
+            console.print("[yellow]No changes applied[/yellow]")
+            return
+        backup = assistant.apply(plan)
+        console.print(f"[green]Applied[/green] · backup: {backup}")
+    except (DesignAssistantError, LLMError, WorkspaceError) as error:
+        _die(str(error))
+
+
+@knowledge_app.command("collection-create")
+def knowledge_collection_create(
+    ctx: typer.Context,
+    name: str,
+    description: Annotated[str, typer.Option("--description")] = "",
+) -> None:
+    """Create a shared knowledge collection."""
+    collection_id = SharedKnowledge(_workspace(ctx)).create_collection(name, description)
+    console.print(f"[green]Created collection[/green] {collection_id}")
+
+
+@knowledge_app.command("collection-list")
+def knowledge_collection_list(ctx: typer.Context) -> None:
+    """List shared knowledge collections."""
+    table = _table("Knowledge collections", ["ID", "Name", "Documents", "Description"])
+    for item in SharedKnowledge(_workspace(ctx)).collections():
+        table.add_row(item["id"], item["name"], str(item["documents"]), item["description"])
+    console.print(table)
+
+
+@knowledge_app.command("add")
+def knowledge_add(
+    ctx: typer.Context,
+    collection: str,
+    title: Annotated[str, typer.Option("--title")],
+    text: Annotated[str | None, typer.Option("--text")] = None,
+    file: Annotated[Path | None, typer.Option("--file")] = None,
+) -> None:
+    """Add text or a UTF-8 file to a shared knowledge collection."""
+    if (text is None) == (file is None):
+        _die("Provide exactly one of --text or --file")
+    try:
+        content = file.read_text(encoding="utf-8") if file else str(text)
+        document_id = SharedKnowledge(_workspace(ctx)).add(collection, title, content)
+        console.print(f"[green]Added document[/green] {document_id}")
+    except (OSError, KeyError) as error:
+        _die(str(error))
+
+
+@knowledge_app.command("search")
+def knowledge_search(
+    ctx: typer.Context,
+    query: str,
+    collection: Annotated[list[str] | None, typer.Option("--collection", "-c")] = None,
+    limit: Annotated[int, typer.Option("--limit")] = 5,
+) -> None:
+    """Search the shared knowledge base."""
+    console.print_json(
+        data=SharedKnowledge(_workspace(ctx)).search(query, collections=collection, limit=limit)
+    )
+
+
+@memory_app.command("list")
+def memory_list(
+    ctx: typer.Context,
+    worker_id: str,
+    scope: Annotated[str, typer.Option("--scope")] = "global",
+    limit: Annotated[int, typer.Option("--limit")] = 10,
+) -> None:
+    """Recall entries from one worker's isolated memory database."""
+    agent = _repo(ctx).load(worker_id)
+    if agent.get("agent_type", "worker") != "worker":
+        _die("Memory belongs to workers, not orchestrators")
+    console.print_json(data=AgentMemory(_workspace(ctx), worker_id).recall(scope, limit=limit))
+
+
+@memory_app.command("search")
+def memory_search(
+    ctx: typer.Context,
+    worker_id: str,
+    query: str,
+    scope: Annotated[str | None, typer.Option("--scope")] = None,
+    limit: Annotated[int, typer.Option("--limit")] = 10,
+) -> None:
+    """Search one worker's isolated memory database."""
+    agent = _repo(ctx).load(worker_id)
+    if agent.get("agent_type", "worker") != "worker":
+        _die("Memory belongs to workers, not orchestrators")
+    console.print_json(
+        data=AgentMemory(_workspace(ctx), worker_id).search(query, scope=scope, limit=limit)
+    )
 
 
 @run_app.command("start")

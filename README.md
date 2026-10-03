@@ -20,9 +20,10 @@
 ---
 
 ActivLayer Community Edition is an operational, self-hosted environment for one organization and up
-to three users. Define Agent Workers as portable Studio-compatible JSON graphs, edit them from a
-rich terminal interface, connect local or remote models, publish versioned definitions, and execute
-them with durable state, permissions, approval checkpoints, retries, and tamper-evident events.
+to three users. Define workers and multi-worker orchestrators as portable Studio-compatible JSON
+graphs, edit them from a rich terminal interface or safe design chat, connect local or remote
+models, publish versioned definitions, and execute them with durable state, isolated worker memory,
+shared knowledge, permissions, approval checkpoints, retries, and tamper-evident events.
 
 It has no required cloud account, mandatory telemetry, or proprietary service in the execution path.
 
@@ -30,11 +31,11 @@ It has no required cloud account, mandatory telemetry, or proprietary service in
 
 | Environment | Agent design | Execution | Integration |
 |---|---|---|---|
-| One organization | Studio-compatible JSON | Durable SQLite state | Ollama |
-| Up to three users | CLI graph navigation | Permission enforcement | vLLM |
+| One organization | Worker + orchestrator types | Durable SQLite state | Ollama |
+| Up to three users | Studio-compatible JSON + design chat | Permission enforcement | vLLM |
 | Token-authenticated API | Node and property editing | Human approval gates | llama.cpp server |
-| Local secret store | Draft and publish lifecycle | Retries and resume | Any OpenAI-compatible API |
-| Environment doctor | Import and export | Hash-chained events | Governed HTTP connectors |
+| Isolated worker memory | Draft and publish lifecycle | Retries and resume | Any OpenAI-compatible API |
+| Shared knowledge base | Import and export | Hash-chained events | Governed HTTP connectors |
 
 ## Install
 
@@ -123,6 +124,10 @@ Agent definitions use the JSON graph already produced by ActivLayer Studio:
   "schema_version": "1.0",
   "id": "request-review",
   "name": "Request Review",
+  "agent_type": "worker",
+  "managed_workers": [],
+  "memory": {"enabled": false, "scope_field": "customer_id", "recall_limit": 5},
+  "knowledge": {"collections": [], "top_k": 5},
   "version": "1",
   "status": "draft",
   "system_prompt": "Review operational requests carefully and return JSON.",
@@ -210,6 +215,46 @@ activlayer agent export request-review --published --output request-review.json
 Values are parsed as JSON when possible, so numbers, booleans, arrays, objects, and quoted strings
 retain their types. Read the complete [CLI guide](docs/cli.md) and
 [Agent JSON reference](docs/agent-json.md).
+
+## Orchestrators, worker memory, and shared knowledge
+
+Every definition has an explicit `agent_type`: `worker` or `orchestrator`. An orchestrator owns an
+allowlist of `managed_workers`; routing and delegation fail closed if a model or graph selects any
+other agent. Each worker can use its own SQLite memory database while retrieving reviewed material
+from organization-wide knowledge collections.
+
+```bash
+activlayer agent new "Product Advisor" --id product-advisor --type worker
+activlayer agent new "Customer Service" --id customer-service --type orchestrator
+activlayer agent workers customer-service product-advisor
+
+activlayer knowledge collection-create "Bank Products"
+activlayer knowledge add bank-products --title "Account guide" --file account-guide.md
+activlayer knowledge search "monthly fee" --collection bank-products
+activlayer memory list product-advisor --scope customer-001
+```
+
+The complete runnable organization with one orchestrator and three workers is in
+[examples/customer_service](examples/customer_service/README.md).
+
+## Design with plain language
+
+`activlayer chat` asks the active OpenAI-compatible model to translate a developer request into a
+small typed change plan. The assistant can create agents and edit properties, nodes, edges, and
+managed-worker relationships. It cannot publish, run shell commands, edit secrets, delete agents,
+or invoke arbitrary tools. Every plan is staged in memory, checked for valid graphs and supported
+nodes, shown for review, and applied only after confirmation. Changed drafts are backed up first.
+
+```bash
+activlayer chat \
+  "Create a service orchestrator that manages the product and support workers"
+
+# For reviewed automation:
+activlayer chat --apply \
+  "Add shared knowledge retrieval before the answer node in product-advisor"
+```
+
+See [Orchestration and design chat](docs/orchestration.md) for the safety boundary and JSON model.
 
 ## Execute, approve, and inspect
 
@@ -316,4 +361,3 @@ permissions, approval pause/resume, event integrity, CLI workflows, and authenti
 - Contact [hello@activlayer.com](mailto:hello@activlayer.com) for product inquiries.
 
 ActivLayer Community Edition is licensed under the [Apache License 2.0](LICENSE).
-

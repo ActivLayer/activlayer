@@ -3,6 +3,16 @@
   "id": "request-review",
   "name": "Request Review",
   "description": "Analyze an operational request and pause before approval.",
+  "agent_type": "worker",
+  "managed_workers": [],
+  "memory": {
+    "enabled": false,
+    "auto_recall": true,
+    "auto_remember": true,
+    "scope_field": "customer_id",
+    "recall_limit": 5
+  },
+  "knowledge": {"collections": [], "top_k": 5},
   "domain": "general",
   "version": "1",
   "status": "draft",
@@ -74,4 +84,3 @@
     ]
   }
 }
-

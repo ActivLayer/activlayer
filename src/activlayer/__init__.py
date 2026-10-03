@@ -1,14 +1,17 @@
 """ActivLayer Community Edition public SDK."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from .extensions import Extension, install
 from .graph_runtime import GraphRuntime, NodeExecutionError, UnsupportedNodeError
+from .knowledge import SharedKnowledge
+from .memory import AgentMemory
 from .runtime import ActivLayerError, PermissionDenied, Runtime, WorkerNotRegistered
 from .spec import ApprovalPolicy, Run, RunStatus, Step, Tool, Worker, tool
 
 __all__ = [
     "ActivLayerError",
+    "AgentMemory",
     "ApprovalPolicy",
     "Extension",
     "GraphRuntime",
@@ -16,6 +19,7 @@ __all__ = [
     "PermissionDenied",
     "Run",
     "RunStatus",
+    "SharedKnowledge",
     "Runtime",
     "Step",
     "Tool",

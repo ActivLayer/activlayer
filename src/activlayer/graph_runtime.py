@@ -15,8 +15,10 @@ from typing import Any
 
 import httpx
 
-from .agent import AgentValidationError, topological_order, validate_agent
+from .agent import AgentRepository, AgentValidationError, topological_order, validate_agent
+from .knowledge import SharedKnowledge
 from .llm import client_from_workspace
+from .memory import AgentMemory
 from .runtime import ActivLayerError, PermissionDenied
 from .spec import Run, RunStatus
 from .store import SQLiteStore
@@ -169,6 +171,32 @@ class GraphRuntime:
             if node_type == "function.call":
                 name = config.get("function")
                 supported = f"function:{name}" in self.handlers
+            if node_type in {
+                "orchestrator.route",
+                "orchestrator.delegate",
+                "knowledge.search",
+                "memory.recall",
+                "memory.remember",
+            }:
+                supported = True
+            if node_type == "orchestrator.route":
+                managed = set(agent.get("managed_workers", []))
+                for route in config.get("routes", []):
+                    if route.get("worker") not in managed:
+                        errors.append(
+                            f"Node '{node_id}' routes to an unmanaged worker: {route.get('worker')}"
+                        )
+                default_worker = config.get("default_worker")
+                if default_worker and default_worker not in managed:
+                    errors.append(
+                        f"Node '{node_id}' defaults to an unmanaged worker: {default_worker}"
+                    )
+            if node_type == "orchestrator.delegate":
+                fixed_worker = config.get("worker")
+                if fixed_worker and fixed_worker not in agent.get("managed_workers", []):
+                    errors.append(
+                        f"Node '{node_id}' delegates to an unmanaged worker: {fixed_worker}"
+                    )
             if not supported:
                 errors.append(
                     f"Node '{node_id}' uses unsupported type '{node_type}'; install an extension"
@@ -186,25 +214,56 @@ class GraphRuntime:
         execute: bool = True,
     ) -> Run:
         errors = validate_agent(agent)
+        errors.extend(
+            AgentRepository(self.workspace).relationship_errors(agent, published_required=True)
+        )
         errors.extend(self.execution_errors(agent))
         if errors:
             raise AgentValidationError(errors)
         order = topological_order(agent)
+        context = dict(input)
+        memory_config = agent.get("memory") or {}
+        scope_field = str(memory_config.get("scope_field", "customer_id"))
+        memory_scope = str(resolve_path(input, scope_field, "global"))
+        if agent.get("agent_type", "worker") == "worker" and memory_config.get("enabled"):
+            if memory_config.get("auto_recall", True):
+                context["memory"] = AgentMemory(self.workspace, agent["id"]).recall(
+                    memory_scope,
+                    limit=int(memory_config.get("recall_limit", 5)),
+                )
+        knowledge_config = agent.get("knowledge") or {}
+        collections = knowledge_config.get("collections") or []
+        if collections:
+            query = str(
+                input.get("message")
+                or input.get("request")
+                or input.get("query")
+                or json.dumps(input, ensure_ascii=False)
+            )
+            context["knowledge"] = SharedKnowledge(self.workspace).search(
+                query,
+                collections=collections,
+                limit=int(knowledge_config.get("top_k", 5)),
+            )
+        actual_run_id = run_id or uuid.uuid4().hex
         run = Run(
-            id=run_id or uuid.uuid4().hex,
+            id=actual_run_id,
             worker=agent["id"],
             worker_version=str(agent.get("version", "1")),
             status=RunStatus.PENDING,
             current_step=0,
             state={
                 "definition": agent,
+                "run_id": actual_run_id,
                 "order": order,
                 "input": input,
                 "outputs": {},
-                "context": dict(input),
+                "context": context,
                 "trace": [],
                 "attempts": {},
                 "actor": actor,
+                "permissions": sorted(permissions),
+                "memory_scope": memory_scope,
                 "started_at": datetime.now(UTC).isoformat(),
             },
             permissions=frozenset(permissions),
@@ -301,6 +360,27 @@ class GraphRuntime:
                 self.store.save_run(run)
                 time.sleep(min(0.1 * (2 ** (attempts - 1)), 1.0))
 
+        memory_config = agent.get("memory") or {}
+        if (
+            agent.get("agent_type", "worker") == "worker"
+            and memory_config.get("enabled")
+            and memory_config.get("auto_remember", True)
+        ):
+            try:
+                AgentMemory(self.workspace, agent["id"]).remember(
+                    run.state.get("memory_scope", "global"),
+                    {
+                        "input": run.state["input"],
+                        "output": run.state["outputs"].get(order[-1]),
+                    },
+                    run_id=run.id,
+                )
+            except Exception as error:  # noqa: BLE001
+                message = f"Worker memory write failed: {error}"
+                run = replace(run, status=RunStatus.FAILED, error=message)
+                self.store.save_run(run)
+                self.store.append_event(run.id, "memory.failed", {"error": str(error)})
+                return run
         run.state["completed_at"] = datetime.now(UTC).isoformat()
         run = replace(run, status=RunStatus.SUCCEEDED)
         self.store.save_run(run)
@@ -348,6 +428,16 @@ class GraphRuntime:
             return self.handlers[node_type](node, state)
         if node_type.startswith("trigger."):
             return state["input"]
+        if node_type == "orchestrator.route":
+            return self._execute_orchestrator_route(node, state, agent)
+        if node_type == "orchestrator.delegate":
+            return self._execute_orchestrator_delegate(node, state, agent)
+        if node_type == "knowledge.search":
+            return self._execute_knowledge(node, state, agent)
+        if node_type == "memory.recall":
+            return self._execute_memory_recall(node, state, agent)
+        if node_type == "memory.remember":
+            return self._execute_memory_remember(node, state, agent)
         if node_type.startswith("ai.") or node_type == "rule.ai":
             return self._execute_ai(node, state, agent)
         if node_type.startswith("rule."):
@@ -385,6 +475,7 @@ class GraphRuntime:
         user_payload = {
             "input": state["input"],
             "prior_results": state["outputs"],
+            "context": state["context"],
             "node_configuration": config,
         }
         work_item = json.dumps(user_payload, ensure_ascii=False)
@@ -554,5 +645,182 @@ class GraphRuntime:
         return {
             "recommendation": state["context"].get("recommendation"),
             "flags": state["context"].get("flags", []),
+            "selected_worker": state["context"].get("selected_worker"),
+            "delegated_response": state["context"].get("delegated_response"),
             "results": deepcopy(state["outputs"]),
         }
+
+    def _execute_orchestrator_route(
+        self,
+        node: dict[str, Any],
+        state: dict[str, Any],
+        agent: dict[str, Any],
+    ) -> dict[str, Any]:
+        if agent.get("agent_type") != "orchestrator":
+            raise NodeExecutionError("orchestrator.route can only run inside an orchestrator")
+        config = node.get("data", {}).get("config", {})
+        managed = agent.get("managed_workers", [])
+        if not managed:
+            raise NodeExecutionError("Orchestrator has no managed workers")
+        query = str(
+            state["input"].get("message")
+            or state["input"].get("request")
+            or state["input"].get("query")
+            or json.dumps(state["input"], ensure_ascii=False)
+        ).casefold()
+        selected: str | None = None
+        reason = ""
+        for route in config.get("routes", []):
+            worker = route.get("worker")
+            keywords = [str(value).casefold() for value in route.get("when_any", [])]
+            if worker in managed and keywords and any(keyword in query for keyword in keywords):
+                selected = worker
+                reason = f"Matched route keywords for {worker}"
+                break
+        if selected is None and config.get("use_llm", False):
+            repository = AgentRepository(self.workspace)
+            candidates = []
+            for worker_id in managed:
+                worker = repository.load(worker_id, published=True)
+                candidates.append(
+                    {
+                        "id": worker_id,
+                        "name": worker.get("name"),
+                        "description": worker.get("description", ""),
+                    }
+                )
+            response = client_from_workspace(self.workspace, config.get("provider")).chat(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Select exactly one worker for the request. Return only JSON with "
+                            "worker and reason. Never invent a worker id."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(
+                            {"request": state["input"], "workers": candidates},
+                            ensure_ascii=False,
+                        ),
+                    },
+                ],
+                temperature=0,
+                max_tokens=200,
+            )
+            try:
+                choice = response.json()
+            except json.JSONDecodeError as error:
+                raise NodeExecutionError("Router model returned invalid JSON") from error
+            proposed = choice.get("worker")
+            if proposed not in managed:
+                raise NodeExecutionError("Router model selected an unmanaged worker")
+            selected = proposed
+            reason = str(choice.get("reason", "Selected by model"))
+        if selected is None:
+            selected = config.get("default_worker") or managed[0]
+            if selected not in managed:
+                raise NodeExecutionError("Default worker is not managed by this orchestrator")
+            reason = "Default route"
+        return {"selected_worker": selected, "routing_reason": reason}
+
+    def _execute_orchestrator_delegate(
+        self,
+        node: dict[str, Any],
+        state: dict[str, Any],
+        agent: dict[str, Any],
+    ) -> dict[str, Any]:
+        config = node.get("data", {}).get("config", {})
+        worker_id = config.get("worker") or resolve_path(
+            state["context"], config.get("worker_from", "selected_worker")
+        )
+        if worker_id not in agent.get("managed_workers", []):
+            raise NodeExecutionError(f"Cannot delegate to unmanaged worker: {worker_id}")
+        worker = AgentRepository(self.workspace).load(str(worker_id), published=True)
+        child_input = deepcopy(state["input"])
+        child_input["orchestrator_id"] = agent["id"]
+        child_input["parent_run_id"] = state.get("run_id")
+        child = GraphRuntime(self.workspace).start(
+            worker,
+            child_input,
+            permissions=set(state.get("permissions", [])),
+            actor=state.get("actor"),
+        )
+        if child.status != RunStatus.SUCCEEDED:
+            raise NodeExecutionError(
+                f"Delegated worker {worker_id} stopped with status {child.status.value}; "
+                f"child run {child.id}"
+            )
+        final_node = child.state["order"][-1]
+        response = child.state["outputs"].get(final_node)
+        return {
+            "delegated_worker": worker_id,
+            "delegated_run_id": child.id,
+            "delegated_response": response,
+        }
+
+    def _execute_knowledge(
+        self,
+        node: dict[str, Any],
+        state: dict[str, Any],
+        agent: dict[str, Any],
+    ) -> dict[str, Any]:
+        config = node.get("data", {}).get("config", {})
+        query_template = str(config.get("query", "{request}"))
+        query = _render(query_template, state["context"])
+        collections = config.get("collections") or (agent.get("knowledge") or {}).get(
+            "collections", []
+        )
+        results = SharedKnowledge(self.workspace).search(
+            query,
+            collections=collections,
+            limit=int(config.get("top_k", 5)),
+        )
+        return {str(config.get("output_field", "knowledge")): results}
+
+    def _execute_memory_recall(
+        self,
+        node: dict[str, Any],
+        state: dict[str, Any],
+        agent: dict[str, Any],
+    ) -> dict[str, Any]:
+        config = node.get("data", {}).get("config", {})
+        scope = str(
+            resolve_path(
+                state["context"],
+                config.get("scope_field", "customer_id"),
+                state.get("memory_scope", "global"),
+            )
+        )
+        memories = AgentMemory(self.workspace, agent["id"]).recall(
+            scope, limit=int(config.get("limit", 5))
+        )
+        return {str(config.get("output_field", "memory")): memories}
+
+    def _execute_memory_remember(
+        self,
+        node: dict[str, Any],
+        state: dict[str, Any],
+        agent: dict[str, Any],
+    ) -> dict[str, Any]:
+        config = node.get("data", {}).get("config", {})
+        scope = str(
+            resolve_path(
+                state["context"],
+                config.get("scope_field", "customer_id"),
+                state.get("memory_scope", "global"),
+            )
+        )
+        fields = config.get("fields")
+        if fields:
+            content = {field: resolve_path(state["context"], field) for field in fields}
+        else:
+            content = {"input": state["input"], "context": state["context"]}
+        memory_id = AgentMemory(self.workspace, agent["id"]).remember(
+            scope,
+            content,
+            kind=str(config.get("kind", "note")),
+            run_id=state.get("run_id"),
+        )
+        return {"memory_id": memory_id, "memory_scope": scope}

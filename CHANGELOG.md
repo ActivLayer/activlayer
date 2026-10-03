@@ -2,6 +2,17 @@
 
 All notable changes to ActivLayer Community Edition are documented here.
 
+## 0.3.0 — 2026-10-03
+
+- Explicit `worker` and `orchestrator` agent types with managed-worker allowlists
+- Deterministic or model-assisted routing and durable child-run delegation
+- Separate SQLite memory database for every worker
+- Shared organization knowledge collections and local retrieval
+- Safe natural-language design chat with typed operations, staged validation, confirmation, and
+  draft backups
+- CLI commands for roles, relationships, knowledge, memory, and design chat
+- Runnable customer-service organization with one orchestrator and three specialized workers
+
 ## 0.2.0 — 2026-10-03
 
 - Single-organization environment with an enforced three-user ceiling

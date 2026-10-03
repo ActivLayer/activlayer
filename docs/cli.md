@@ -17,7 +17,10 @@ activlayer
 ├── llm list|add|use|test|remove
 ├── connector list|add|test
 ├── extension list|add|remove
-├── agent new|list|show|set|validate|import|export|provision|publish|graph
+├── chat                    plan and review natural-language design changes
+├── knowledge collection-create|collection-list|add|search
+├── memory list|search      inspect one worker's isolated memory
+├── agent new|list|show|set|workers|validate|import|export|provision|publish|graph
 │   └── node list|types|explain|show|add|set|remove|connect|disconnect
 └── run start|list|show|resume|approve
 ```
@@ -59,3 +62,23 @@ activlayer --install-completion
 ```
 
 Typer installs completion for the active shell.
+
+## Multi-agent design
+
+Create workers before their orchestrator, publish the workers first, and then publish the
+orchestrator:
+
+```bash
+activlayer agent new "Product Worker" --id product-worker --type worker
+activlayer agent publish product-worker
+activlayer agent new "Service Orchestrator" --id service-orchestrator --type orchestrator
+activlayer agent workers service-orchestrator product-worker
+activlayer agent publish service-orchestrator
+```
+
+`agent validate` checks role relationships as well as graph structure. Publication fails when an
+orchestrator references a missing, unpublished, or non-worker agent.
+
+Use `activlayer chat "<request>"` to produce a validated design plan. The command displays every
+typed operation and asks before changing drafts. `--apply` is intended for automation where the
+request and generated plan are already subject to review.

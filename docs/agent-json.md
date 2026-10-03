@@ -11,6 +11,10 @@ and published snapshots as readable JSON files.
 | `id` | yes | Stable environment-unique identifier |
 | `name` | yes | Human-readable name |
 | `description` | no | Purpose and boundary |
+| `agent_type` | yes | `worker` or `orchestrator` |
+| `managed_workers` | orchestrator | Allowlisted worker IDs |
+| `memory` | no | Worker recall and write-back settings |
+| `knowledge` | no | Shared collection IDs and retrieval limit |
 | `domain` | no | Industry-neutral classification |
 | `version` | no | Published definition version |
 | `status` | no | `draft` or `published` |
@@ -50,4 +54,3 @@ output, and an acyclic graph. Execution follows deterministic topological order.
 
 Browse executable nodes with `activlayer agent node types` and inspect configuration examples with
 `activlayer agent node explain <type>`.
-

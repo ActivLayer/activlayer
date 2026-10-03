@@ -70,6 +70,37 @@ NODE_CATALOG: dict[str, dict[str, Any]] = {
         "description": "Pause durably until a user records approval.",
         "config": {"approval_reason": "Human review required"},
     },
+    "orchestrator.route": {
+        "category": "orchestration",
+        "description": (
+            "Select one managed worker using deterministic routes or an optional model."
+        ),
+        "config": {
+            "routes": [{"worker": "worker-id", "when_any": ["keyword"]}],
+            "default_worker": "worker-id",
+            "use_llm": False,
+        },
+    },
+    "orchestrator.delegate": {
+        "category": "orchestration",
+        "description": "Run the selected managed worker as a durable child run.",
+        "config": {"worker_from": "selected_worker"},
+    },
+    "knowledge.search": {
+        "category": "knowledge",
+        "description": "Search the organization's shared knowledge collections.",
+        "config": {"query": "{request}", "collections": [], "top_k": 5},
+    },
+    "memory.recall": {
+        "category": "memory",
+        "description": "Recall records from this worker's isolated memory database.",
+        "config": {"scope_field": "customer_id", "limit": 5},
+    },
+    "memory.remember": {
+        "category": "memory",
+        "description": "Write selected context fields to this worker's isolated memory database.",
+        "config": {"scope_field": "customer_id", "fields": [], "kind": "note"},
+    },
     "tool.http": {
         "category": "tool",
         "description": "Call a configured HTTP connector under permission and approval controls.",

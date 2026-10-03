@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
-from .agent import AgentError, AgentRepository
+from .agent import AgentError, AgentRepository, AgentValidationError
 from .graph_runtime import GraphRuntime
 from .runtime import ActivLayerError
 from .workspace import Workspace
@@ -44,8 +44,8 @@ def create_app(workspace: Workspace | None = None) -> FastAPI:
     runtime = GraphRuntime(workspace)
     application = FastAPI(
         title="ActivLayer Community Edition",
-        version="0.2.0",
-        description="Self-hosted API for governed Agent Workers.",
+        version="0.3.0",
+        description="Self-hosted API for governed orchestrators and Agent Workers.",
     )
 
     def current_user(x_activlayer_key: str | None = Header(default=None)) -> dict[str, Any]:
@@ -77,6 +77,8 @@ def create_app(workspace: Workspace | None = None) -> FastAPI:
                 "name": agent["name"],
                 "version": agent.get("version", "1"),
                 "description": agent.get("description", ""),
+                "agent_type": agent.get("agent_type", "worker"),
+                "managed_workers": agent.get("managed_workers", []),
             }
             for agent in repository.list(published=True)
         ]
@@ -102,6 +104,8 @@ def create_app(workspace: Workspace | None = None) -> FastAPI:
                 actor=user["email"],
             )
             return _run_payload(run)
+        except AgentValidationError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         except AgentError as error:
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
         except ActivLayerError as error:
