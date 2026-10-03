@@ -27,6 +27,11 @@ activlayer
 
 Every group and command supports `--help`.
 
+`activlayer init` automatically probes the standard loopback endpoints for Ollama, vLLM, and
+llama.cpp, plus non-default ports declared by running vLLM and llama.cpp processes. Discovered
+servers with at least one model are saved and the first becomes active. Pass `--no-detect-llm` for
+isolated or manually configured environments.
+
 ## Agent design workflow
 
 Create a definition, browse available node types, add nodes, edit nested configuration, connect the

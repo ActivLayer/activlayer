@@ -2,7 +2,7 @@ from pathlib import Path
 
 import httpx
 
-from activlayer.llm import OpenAICompatibleClient, client_from_workspace
+from activlayer.llm import OpenAICompatibleClient, client_from_workspace, detect_local_providers
 from activlayer.workspace import Workspace
 
 
@@ -50,3 +50,50 @@ def test_workspace_provider_and_secret_resolution(tmp_path: Path) -> None:
     client = client_from_workspace(workspace)
     assert client.base_url == "http://localhost:11434/v1"
     assert client.headers["Authorization"] == "Bearer private-value"
+
+
+def test_detect_local_openai_compatible_provider() -> None:
+    def fake_get(url, **kwargs):
+        if ":11434/" in url:
+            return httpx.Response(
+                200,
+                json={"data": [{"id": "chat-model"}]},
+                request=httpx.Request("GET", url),
+            )
+        raise httpx.ConnectError("offline", request=httpx.Request("GET", url))
+
+    detected = detect_local_providers(request_get=fake_get, process_output="")
+
+    assert detected == [
+        {
+            "name": "ollama-local",
+            "type": "ollama",
+            "base_url": "http://localhost:11434/v1",
+            "models": ["chat-model"],
+        }
+    ]
+
+
+def test_detect_vllm_on_configured_process_port() -> None:
+    def fake_get(url, **kwargs):
+        if ":8001/" in url:
+            return httpx.Response(
+                200,
+                json={"data": [{"id": "served-chat-model", "owned_by": "vllm"}]},
+                request=httpx.Request("GET", url),
+            )
+        raise httpx.ConnectError("offline", request=httpx.Request("GET", url))
+
+    detected = detect_local_providers(
+        request_get=fake_get,
+        process_output="python /opt/venv/bin/vllm serve org/model --port 8001",
+    )
+
+    assert detected == [
+        {
+            "name": "vllm-local-8001",
+            "type": "vllm",
+            "base_url": "http://localhost:8001/v1",
+            "models": ["served-chat-model"],
+        }
+    ]

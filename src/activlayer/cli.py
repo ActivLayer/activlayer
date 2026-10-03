@@ -13,6 +13,7 @@ import typer
 from rich import box
 from rich.console import Console
 from rich.json import JSON
+from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
@@ -32,7 +33,7 @@ from .catalog import NODE_CATALOG, node_help
 from .design_assistant import DesignAssistant, DesignAssistantError
 from .graph_runtime import GraphRuntime
 from .knowledge import SharedKnowledge
-from .llm import PROVIDER_DEFAULTS, LLMError, client_from_workspace
+from .llm import PROVIDER_DEFAULTS, LLMError, client_from_workspace, detect_local_providers
 from .memory import AgentMemory
 from .runtime import ActivLayerError
 from .spec import RunStatus
@@ -142,18 +143,59 @@ def init(
     path: Annotated[Path, typer.Option("--path", help="Environment directory.")] = Path(
         ".activlayer"
     ),
+    detect_llm: Annotated[
+        bool,
+        typer.Option(
+            "--detect-llm/--no-detect-llm",
+            help="Discover Ollama, vLLM, and llama.cpp on local standard ports.",
+        ),
+    ] = True,
 ) -> None:
     """Create a single-organization ActivLayer environment."""
     try:
         workspace = Workspace.initialize(path, organization, owner_email=owner)
     except (WorkspaceError, ValueError) as error:
         _die(str(error))
+    detected: list[dict[str, Any]] = []
+    if detect_llm:
+        with console.status("[cyan]Discovering local model providers...[/cyan]"):
+            detected = detect_local_providers()
+        config = workspace.config
+        for provider in detected:
+            if not provider["models"]:
+                continue
+            config["providers"][provider["name"]] = {
+                "type": provider["type"],
+                "base_url": provider["base_url"],
+                "model": provider["models"][0],
+                "api_key_env": None,
+                "timeout_seconds": 120,
+            }
+            if not config.get("active_provider"):
+                config["active_provider"] = provider["name"]
+        workspace.save_config(config)
+    configured = [provider for provider in detected if provider["models"]]
+    if configured:
+        provider_text = "\n".join(
+            f"  [green]✓[/green] {escape(provider['type'])} · {escape(provider['models'][0])}"
+            for provider in configured
+        )
+        next_step = "Next: [cyan]activlayer agent new 'My Worker'[/cyan]"
+    elif detected:
+        provider_text = (
+            "  [yellow]Detected a local server, but it has no models installed.[/yellow]"
+        )
+        next_step = "Next: install a model, then run [cyan]activlayer llm add --help[/cyan]"
+    else:
+        provider_text = "  [yellow]No local model provider detected.[/yellow]"
+        next_step = "Next: [cyan]activlayer llm add local --type ollama --model <model>[/cyan]"
     console.print(
         Panel.fit(
             f"[bold green]Environment ready[/bold green]\n"
-            f"Organization  [bold]{organization}[/bold]\n"
-            f"Home          {workspace.root}\n\n"
-            "Next: [cyan]activlayer llm add local --type ollama --model <model>[/cyan]",
+            f"Organization  [bold]{escape(organization)}[/bold]\n"
+            f"Home          {escape(str(workspace.root))}\n\n"
+            f"[bold]Local model discovery[/bold]\n{provider_text}\n\n"
+            f"{next_step}",
             title="ActivLayer",
             border_style="violet",
         )
@@ -193,9 +235,11 @@ def guide() -> None:
         Panel(
             "[bold]1. Create an environment[/bold]\n"
             "   activlayer init --organization 'My Organization' --owner owner@example.com\n\n"
-            "[bold]2. Connect a model server[/bold]\n"
-            "   activlayer llm add local --type ollama --model qwen3:8b\n"
-            "   activlayer llm test local\n\n"
+            "[bold]2. Confirm the discovered model server[/bold]\n"
+            "   activlayer llm list\n"
+            "   activlayer llm test\n"
+            "   # If none was detected: activlayer llm add local --type ollama "
+            "--model qwen3:8b\n\n"
             "[bold]3. Provision or design an agent[/bold]\n"
             "   activlayer agent provision worker.json --publish\n"
             "   activlayer agent node list worker-id\n"

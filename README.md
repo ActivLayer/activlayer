@@ -54,7 +54,13 @@ activlayer init --organization "Example Organization"
 
 The installer requires Python 3.11 or newer, creates an isolated environment under
 `~/.local/share/activlayer`, and exposes only `activlayer` through `~/.local/bin`. Running the same
-install command upgrades the existing installation. It does not require root access.
+install command upgrades the existing installation. It does not require root access. For detailed
+package-download logs, run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ActivLayer/activlayer/community-edition/install.sh \
+  | ACTIVLAYER_VERBOSE=1 sh
+```
 
 For contributors who want an editable source checkout:
 
@@ -76,6 +82,11 @@ activlayer init \
 activlayer status
 activlayer doctor
 ```
+
+During initialization, ActivLayer checks the standard local endpoints for Ollama, vLLM, and
+llama.cpp. It also recognizes non-default ports declared by running vLLM and llama.cpp server
+processes. Every reachable provider with an installed model is configured automatically, and the
+first discovery becomes active. Use `--no-detect-llm` only when local discovery is not wanted.
 
 This creates `.activlayer/` with organization configuration, private user and secret files, agent
 drafts, published definitions, logs, and the durable runtime database. Set `ACTIVLAYER_HOME` or use
@@ -120,7 +131,7 @@ activlayer llm add custom \
 
 activlayer llm list
 activlayer llm use local
-activlayer llm test local --prompt "Reply with one short sentence."
+activlayer llm test --name local --prompt "Reply with one short sentence."
 ```
 
 Keys supplied with `--api-key` are stored in a mode-`600` local secrets file and excluded from

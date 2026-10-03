@@ -24,11 +24,17 @@ activlayer init \
   --owner owner@example.com
 ```
 
+Initialization automatically discovers Ollama, vLLM, and llama.cpp on their standard local ports
+and on non-default ports declared by running vLLM or llama.cpp processes. It configures every
+provider that reports a model and selects the first one. If none is running, continue with manual
+configuration below. Use `--no-detect-llm` to skip discovery.
+
 ## Configure a model
 
 ```bash
 activlayer llm add local --type ollama --model qwen3:8b
-activlayer llm test local
+activlayer llm list
+activlayer llm test
 ```
 
 AI nodes require a model provider. Trigger, rule, approval, HTTP, decision, and output nodes run

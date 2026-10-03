@@ -2,6 +2,14 @@
 
 All notable changes to ActivLayer Community Edition are documented here.
 
+## 0.3.2 — 2026-10-03
+
+- Automatic discovery and configuration of local Ollama, vLLM, and llama.cpp providers during
+  environment initialization, including declared non-default vLLM and llama.cpp ports
+- Clear provider-discovery results and next steps in the initialization screen
+- Redesigned installer with visible stages, version and path details, a success panel, and optional
+  verbose package logs through `ACTIVLAYER_VERBOSE=1`
+
 ## 0.3.1 — 2026-10-03
 
 - One-command, no-root installer for Linux and macOS

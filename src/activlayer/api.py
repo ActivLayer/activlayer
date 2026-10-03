@@ -44,7 +44,7 @@ def create_app(workspace: Workspace | None = None) -> FastAPI:
     runtime = GraphRuntime(workspace)
     application = FastAPI(
         title="ActivLayer Community Edition",
-        version="0.3.1",
+        version="0.3.2",
         description="Self-hosted API for governed orchestrators and Agent Workers.",
     )
 

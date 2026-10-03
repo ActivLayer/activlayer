@@ -3,6 +3,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from activlayer.cli import app
+from activlayer.workspace import Workspace
 
 runner = CliRunner()
 
@@ -23,6 +24,7 @@ def test_cli_environment_and_agent_workflow(tmp_path: Path) -> None:
             "owner@example.com",
             "--path",
             str(home),
+            "--no-detect-llm",
         ],
     )
     assert initialized.exit_code == 0, initialized.output
@@ -59,7 +61,10 @@ def test_cli_environment_and_agent_workflow(tmp_path: Path) -> None:
 
 def test_cli_user_limit(tmp_path: Path) -> None:
     home = tmp_path / ".activlayer"
-    runner.invoke(app, ["init", "--organization", "Example", "--path", str(home)])
+    runner.invoke(
+        app,
+        ["init", "--organization", "Example", "--path", str(home), "--no-detect-llm"],
+    )
     for index in range(3):
         result = invoke(home, "user", "add", f"user{index}@example.com")
         assert result.exit_code == 0
@@ -75,3 +80,29 @@ def test_cli_node_catalog_is_navigable() -> None:
     explained = runner.invoke(app, ["agent", "node", "explain", "ai.prompt"])
     assert explained.exit_code == 0
     assert "OpenAI-compatible" in explained.output
+
+
+def test_init_auto_configures_detected_provider(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "activlayer.cli.detect_local_providers",
+        lambda: [
+            {
+                "name": "ollama-local",
+                "type": "ollama",
+                "base_url": "http://localhost:11434/v1",
+                "models": ["chat-model"],
+            }
+        ],
+    )
+    home = tmp_path / ".activlayer"
+
+    result = runner.invoke(
+        app,
+        ["init", "--organization", "Example", "--path", str(home)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "ollama" in result.output
+    assert "chat-model" in result.output
+    workspace = Workspace(home)
+    assert workspace.config["active_provider"] == "ollama-local"

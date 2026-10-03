@@ -10,7 +10,7 @@ Start Ollama and pull a model, then configure its compatibility endpoint:
 ```bash
 ollama pull qwen3:8b
 activlayer llm add local --type ollama --model qwen3:8b
-activlayer llm test local --prompt "Return the word ready."
+activlayer llm test --name local --prompt "Return the word ready."
 ```
 
 The default endpoint is `http://localhost:11434/v1`.
@@ -50,4 +50,3 @@ activlayer llm add custom \
 
 Use `data.config.provider` on an AI node to override the environment's active provider. Supported AI
 configuration includes `prompt`, `provider`, `temperature`, `max_tokens`, and bounded retry settings.
-

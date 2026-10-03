@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
+import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -17,9 +20,95 @@ PROVIDER_DEFAULTS: dict[str, str] = {
     "openai-compatible": "http://localhost:8000/v1",
 }
 
+LOCAL_PROVIDER_CANDIDATES = (
+    ("ollama-local", "ollama", PROVIDER_DEFAULTS["ollama"]),
+    ("vllm-local", "vllm", PROVIDER_DEFAULTS["vllm"]),
+    ("llama-cpp-local", "llama-cpp", PROVIDER_DEFAULTS["llama-cpp"]),
+)
+
+
+def _running_provider_candidates(process_output: str | None = None) -> list[tuple[str, str, str]]:
+    """Find explicitly configured ports for running local model-server processes."""
+
+    if process_output is None:
+        try:
+            completed = subprocess.run(  # noqa: S603
+                ["ps", "-eo", "args="],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=1,
+            )
+            process_output = completed.stdout
+        except (OSError, subprocess.SubprocessError):
+            return []
+    candidates: list[tuple[str, str, str]] = []
+    for line in process_output.splitlines():
+        lowered = line.casefold()
+        if re.search(r"(?:^|[/\s])vllm\s+serve(?:\s|$)", lowered) or (
+            "vllm" in lowered and "api_server" in lowered
+        ):
+            provider_type, default_port = "vllm", 8000
+        elif "llama-server" in lowered or "llama_server" in lowered:
+            provider_type, default_port = "llama-cpp", 8080
+        else:
+            continue
+        port_match = re.search(r"--port(?:=|\s+)(\d{1,5})(?:\s|$)", line)
+        port = int(port_match.group(1)) if port_match else default_port
+        if not 1 <= port <= 65535:
+            continue
+        standard_port = 8000 if provider_type == "vllm" else 8080
+        suffix = "" if port == standard_port else f"-{port}"
+        candidates.append(
+            (
+                f"{provider_type}-local{suffix}",
+                provider_type,
+                f"http://localhost:{port}/v1",
+            )
+        )
+    return candidates
+
 
 class LLMError(RuntimeError):
     pass
+
+
+def detect_local_providers(
+    *,
+    timeout: float = 0.4,
+    request_get: Callable[..., httpx.Response] | None = None,
+    process_output: str | None = None,
+) -> list[dict[str, Any]]:
+    """Discover usable model servers on standard loopback endpoints."""
+
+    get = request_get or httpx.get
+    detected: list[dict[str, Any]] = []
+    candidates = [*LOCAL_PROVIDER_CANDIDATES, *_running_provider_candidates(process_output)]
+    seen_endpoints: set[str] = set()
+    for name, provider_type, base_url in candidates:
+        if base_url in seen_endpoints:
+            continue
+        seen_endpoints.add(base_url)
+        try:
+            response = get(f"{base_url}/models", timeout=timeout)
+            response.raise_for_status()
+            payload = response.json()
+            models = [
+                str(item["id"])
+                for item in payload.get("data", [])
+                if isinstance(item, dict) and item.get("id")
+            ]
+        except (httpx.HTTPError, KeyError, TypeError, ValueError):
+            continue
+        detected.append(
+            {
+                "name": name,
+                "type": provider_type,
+                "base_url": base_url,
+                "models": models,
+            }
+        )
+    return detected
 
 
 @dataclass(slots=True)
