@@ -1,6 +1,6 @@
 """ActivLayer Community Edition public SDK."""
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 from .extensions import Extension, install
 from .graph_runtime import GraphRuntime, NodeExecutionError, UnsupportedNodeError

@@ -130,9 +130,13 @@ activlayer llm add custom \
   --api-key-env MODEL_API_KEY
 
 activlayer llm list
+activlayer llm select vllm-local-8001
 activlayer llm use local
 activlayer llm test --name local --prompt "Reply with one short sentence."
 ```
+
+`llm list` performs live local discovery as well as showing saved remote providers. Select any
+discovered entry by its displayed name; this saves its endpoint and model and makes it active.
 
 Keys supplied with `--api-key` are stored in a mode-`600` local secrets file and excluded from
 configuration output. `--api-key-env` is preferred for production deployments.

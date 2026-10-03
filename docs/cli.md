@@ -14,7 +14,7 @@ activlayer
 ├── serve                   authenticated HTTP API
 ├── config show|get|set     environment properties
 ├── user list|add|remove|token
-├── llm list|add|use|test|remove
+├── llm list|select|add|use|test|remove
 ├── connector list|add|test
 ├── extension list|add|remove
 ├── chat                    plan and review natural-language design changes
@@ -31,6 +31,10 @@ Every group and command supports `--help`.
 llama.cpp, plus non-default ports declared by running vLLM and llama.cpp processes. Discovered
 servers with at least one model are saved and the first becomes active. Pass `--no-detect-llm` for
 isolated or manually configured environments.
+
+`activlayer llm list` repeats live discovery and merges it with configured local or remote
+providers. Use `activlayer llm select <displayed-name>` to configure a discovered provider and make
+it active. `llm use <name>` remains available for switching between already configured providers.
 
 ## Agent design workflow
 

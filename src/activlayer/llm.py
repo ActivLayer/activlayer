@@ -75,7 +75,7 @@ class LLMError(RuntimeError):
 
 def detect_local_providers(
     *,
-    timeout: float = 0.4,
+    timeout: float = 2.0,
     request_get: Callable[..., httpx.Response] | None = None,
     process_output: str | None = None,
 ) -> list[dict[str, Any]]:

@@ -175,7 +175,10 @@ def init(
                 config["active_provider"] = provider["name"]
         workspace.save_config(config)
     configured = [provider for provider in detected if provider["models"]]
-    if configured:
+    if not detect_llm:
+        provider_text = "  [dim]Local provider discovery skipped.[/dim]"
+        next_step = "Next: [cyan]activlayer llm list[/cyan]"
+    elif configured:
         provider_text = "\n".join(
             f"  [green]✓[/green] {escape(provider['type'])} · {escape(provider['models'][0])}"
             for provider in configured
@@ -476,18 +479,106 @@ def llm_add(
 
 @llm_app.command("list")
 def llm_list(ctx: typer.Context) -> None:
-    """List configured model providers."""
-    config = _workspace(ctx).config
-    table = _table("LLM providers", ["", "Name", "Type", "Model", "Endpoint"])
+    """Discover and list every configured or locally available model provider."""
+    workspace = _workspace(ctx)
+    config = workspace.config
+    with console.status("[cyan]Scanning local model providers...[/cyan]"):
+        detected = detect_local_providers()
+    detected_by_endpoint = {item["base_url"].rstrip("/"): item for item in detected}
+    table = Table(title="Available LLM providers", box=box.ROUNDED, header_style="bold violet")
+    table.add_column("", width=1, no_wrap=True)
+    table.add_column("Name", min_width=18, no_wrap=True)
+    table.add_column("Type", no_wrap=True)
+    table.add_column("Model", overflow="ellipsis")
+    table.add_column("Endpoint", overflow="fold")
+    table.add_column("Status", overflow="fold")
+    listed_endpoints: set[str] = set()
     for name, provider in config["providers"].items():
+        endpoint = provider["base_url"].rstrip("/")
+        online = endpoint in detected_by_endpoint
         table.add_row(
             "●" if name == config.get("active_provider") else "",
             name,
             provider["type"],
             provider["model"],
             provider["base_url"],
+            "[green]configured · online[/green]" if online else "configured",
         )
+        listed_endpoints.add(endpoint)
+    for provider in detected:
+        endpoint = provider["base_url"].rstrip("/")
+        if endpoint in listed_endpoints:
+            continue
+        models = provider["models"]
+        model_summary = (
+            f"{models[0]} (+{len(models) - 1})"
+            if len(models) > 1
+            else (models[0] if models else "")
+        )
+        table.add_row(
+            "",
+            provider["name"],
+            provider["type"],
+            model_summary if models else "[yellow]no models[/yellow]",
+            provider["base_url"],
+            "[cyan]available · select to configure[/cyan]" if models else "detected",
+        )
+    if not config["providers"] and not detected:
+        table.add_row("", "—", "—", "—", "—", "No providers detected")
     console.print(table)
+
+
+@llm_app.command("select")
+def llm_select(
+    ctx: typer.Context,
+    name: str,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", "-m", help="Choose a reported model instead of the first."),
+    ] = None,
+) -> None:
+    """Configure a discovered provider and make it active."""
+    workspace = _workspace(ctx)
+    config = workspace.config
+    configured = config["providers"].get(name)
+    if configured:
+        if model:
+            configured["model"] = model
+        config["active_provider"] = name
+        workspace.save_config(config)
+        console.print(f"[green]Selected[/green] {name} · {configured['model']}")
+        return
+    with console.status("[cyan]Discovering local model providers...[/cyan]"):
+        detected = detect_local_providers()
+    provider = next((item for item in detected if item["name"] == name), None)
+    if provider is None:
+        _die(f"Provider is not configured or currently discoverable: {name}")
+    models = provider["models"]
+    if not models:
+        _die(f"Provider '{name}' has no installed models")
+    selected_model = model or models[0]
+    if selected_model not in models:
+        _die(f"Model is not reported by '{name}': {selected_model}")
+    config["providers"][name] = {
+        "type": provider["type"],
+        "base_url": provider["base_url"],
+        "model": selected_model,
+        "api_key_env": None,
+        "timeout_seconds": 120,
+    }
+    config["active_provider"] = name
+    workspace.save_config(config)
+    console.print(
+        Panel.fit(
+            f"[bold green]Provider selected[/bold green]\n"
+            f"Name      {escape(name)}\n"
+            f"Type      {escape(provider['type'])}\n"
+            f"Model     {escape(selected_model)}\n"
+            f"Endpoint  {escape(provider['base_url'])}",
+            title="ActivLayer LLM",
+            border_style="violet",
+        )
+    )
 
 
 @llm_app.command("use")

@@ -34,6 +34,7 @@ configuration below. Use `--no-detect-llm` to skip discovery.
 ```bash
 activlayer llm add local --type ollama --model qwen3:8b
 activlayer llm list
+activlayer llm select <displayed-provider-name>
 activlayer llm test
 ```
 

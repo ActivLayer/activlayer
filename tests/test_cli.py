@@ -106,3 +106,28 @@ def test_init_auto_configures_detected_provider(tmp_path: Path, monkeypatch) -> 
     assert "chat-model" in result.output
     workspace = Workspace(home)
     assert workspace.config["active_provider"] == "ollama-local"
+
+
+def test_llm_list_discovers_and_select_configures_provider(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / ".activlayer"
+    Workspace.initialize(home, "Example")
+    discoveries = [
+        {
+            "name": "vllm-local-8001",
+            "type": "vllm",
+            "base_url": "http://localhost:8001/v1",
+            "models": ["chat-model"],
+        }
+    ]
+    monkeypatch.setattr("activlayer.cli.detect_local_providers", lambda: discoveries)
+
+    listed = invoke(home, "llm", "list")
+    assert listed.exit_code == 0, listed.output
+    assert "vllm-local-8001" in listed.output
+    assert "available" in listed.output
+
+    selected = invoke(home, "llm", "select", "vllm-local-8001")
+    assert selected.exit_code == 0, selected.output
+    config = Workspace(home).config
+    assert config["active_provider"] == "vllm-local-8001"
+    assert config["providers"]["vllm-local-8001"]["model"] == "chat-model"

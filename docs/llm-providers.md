@@ -1,5 +1,17 @@
 # LLM providers
 
+## Discover and select
+
+```bash
+activlayer llm list
+activlayer llm select vllm-local-8001
+```
+
+The list combines configured providers with live Ollama, vLLM, and llama.cpp discovery. Providers
+running on ports explicitly declared by vLLM or llama.cpp processes are included. Selecting an
+available provider saves its endpoint and first reported model, then makes it active. Pass
+`--model <reported-model>` when the provider exposes more than one model.
+
 ActivLayer talks to model servers through the OpenAI-compatible models and chat-completions APIs.
 Model inference is a replaceable capability; governance and persistence do not depend on a vendor.
 

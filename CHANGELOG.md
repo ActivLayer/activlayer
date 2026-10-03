@@ -2,6 +2,12 @@
 
 All notable changes to ActivLayer Community Edition are documented here.
 
+## 0.3.3 — 2026-10-03
+
+- `activlayer llm list` now merges saved configuration with live local provider discovery
+- `activlayer llm select <name>` configures a discovered provider and makes it active
+- Provider inventory shows active, configured, online, detected, and model availability states
+
 ## 0.3.2 — 2026-10-03
 
 - Automatic discovery and configuration of local Ollama, vLLM, and llama.cpp providers during
