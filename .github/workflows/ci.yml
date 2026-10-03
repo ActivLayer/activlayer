@@ -30,3 +30,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: docker build -t activlayer-community:test .
+
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install into a clean user environment
+        run: |
+          export HOME="$RUNNER_TEMP/activlayer-home"
+          export ACTIVLAYER_SOURCE="$GITHUB_WORKSPACE"
+          export PATH="$HOME/.local/bin:$PATH"
+          sh install.sh
+          activlayer --version
+          activlayer agent node types

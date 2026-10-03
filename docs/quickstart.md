@@ -3,19 +3,18 @@
 ## Requirements
 
 - Python 3.11 or newer
-- Git
+- `curl` for the one-command installer
 - An optional OpenAI-compatible model server for AI nodes
 
 ## Install
 
 ```bash
-git clone https://github.com/ActivLayer/activlayer.git
-cd activlayer
-git switch community-edition
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+curl -fsSL https://raw.githubusercontent.com/ActivLayer/activlayer/community-edition/install.sh | sh
+activlayer --version
 ```
+
+The installer uses an isolated environment and makes `activlayer` available from any directory. If
+it adds `~/.local/bin` to your shell profile, open a new terminal once after installation.
 
 ## Initialize
 
@@ -56,4 +55,3 @@ activlayer run approve <run-id> --actor owner@example.com --reason "Checked"
 ```
 
 Continue with the [CLI guide](cli.md) and [Agent JSON reference](agent-json.md).
-

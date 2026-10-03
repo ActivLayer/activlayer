@@ -39,19 +39,32 @@ It has no required cloud account, mandatory telemetry, or proprietary service in
 
 ## Install
 
+Linux and macOS:
+
 ```bash
-git clone https://github.com/ActivLayer/activlayer.git
-cd activlayer
-git switch community-edition
-
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-
-activlayer --help
+curl -fsSL https://raw.githubusercontent.com/ActivLayer/activlayer/community-edition/install.sh | sh
 ```
 
-Python 3.11 or newer is required.
+Then use the single `activlayer` command from any directory:
+
+```bash
+activlayer --help
+activlayer init --organization "Example Organization"
+```
+
+The installer requires Python 3.11 or newer, creates an isolated environment under
+`~/.local/share/activlayer`, and exposes only `activlayer` through `~/.local/bin`. Running the same
+install command upgrades the existing installation. It does not require root access.
+
+For contributors who want an editable source checkout:
+
+```bash
+git clone --branch community-edition https://github.com/ActivLayer/activlayer.git
+cd activlayer
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+```
 
 ## Create the environment
 

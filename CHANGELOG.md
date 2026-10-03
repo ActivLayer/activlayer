@@ -2,6 +2,12 @@
 
 All notable changes to ActivLayer Community Edition are documented here.
 
+## 0.3.1 — 2026-10-03
+
+- One-command, no-root installer for Linux and macOS
+- Isolated installation with a globally available `activlayer` command
+- Idempotent installation command that also upgrades an existing installation
+
 ## 0.3.0 — 2026-10-03
 
 - Explicit `worker` and `orchestrator` agent types with managed-worker allowlists
